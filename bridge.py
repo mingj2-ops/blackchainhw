@@ -52,19 +52,28 @@ def scan_blocks(chain, contract_info="contract_info.json"):
     print(f"Scanning blocks {start_block} - {end_block} on {chain}")
 
     if chain == 'source':
-        try:
-            logs = w3.eth.get_logs({
-                'fromBlock': start_block,
-                'toBlock': end_block,
-                'address': info['address']
-            })
-            events = [contract.events.Deposit().process_log(log) for log in logs]
-            print(f"Found {len(events)} Deposit events")
-            for evt in events:
-                token = evt.args['token']
-                recipient = evt.args['recipient']
-                amount = evt.args['amount']
-                print(f"Deposit: token={token} recipient={recipient} amount={amount}")
+        # Scan in batches of 5 blocks up to 30 blocks back
+        all_events = []
+        for batch_end in range(end_block, end_block - 31, -5):
+            batch_start = batch_end - 5
+            try:
+                logs = w3.eth.get_logs({
+                    'fromBlock': batch_start,
+                    'toBlock': batch_end,
+                    'address': info['address']
+                })
+                events = [contract.events.Deposit().process_log(log) for log in logs]
+                all_events.extend(events)
+            except Exception as e:
+                print(f"Error getting logs for batch {batch_start}-{batch_end}: {e}")
+
+        print(f"Found {len(all_events)} Deposit events")
+        for evt in all_events:
+            token = evt.args['token']
+            recipient = evt.args['recipient']
+            amount = evt.args['amount']
+            print(f"Deposit: token={token} recipient={recipient} amount={amount}")
+            try:
                 tx = other_contract.functions.wrap(token, recipient, amount).build_transaction({
                     'from': acct.address,
                     'nonce': other_w3.eth.get_transaction_count(acct.address),
@@ -75,23 +84,32 @@ def scan_blocks(chain, contract_info="contract_info.json"):
                 tx_hash = other_w3.eth.send_raw_transaction(signed.raw_transaction)
                 receipt = other_w3.eth.wait_for_transaction_receipt(tx_hash)
                 print(f"wrap(): {'Success' if receipt.status == 1 else 'Failed'}")
-        except Exception as e:
-            print(f"Error scanning source: {e}")
+            except Exception as e:
+                print(f"Error calling wrap: {e}")
 
     elif chain == 'destination':
-        try:
-            logs = w3.eth.get_logs({
-                'fromBlock': start_block,
-                'toBlock': end_block,
-                'address': info['address']
-            })
-            events = [contract.events.Unwrap().process_log(log) for log in logs]
-            print(f"Found {len(events)} Unwrap events")
-            for evt in events:
-                underlying_token = evt.args['underlying_token']
-                recipient = evt.args['to']
-                amount = evt.args['amount']
-                print(f"Unwrap: token={underlying_token} recipient={recipient} amount={amount}")
+        # Scan in batches of 5 blocks up to 30 blocks back
+        all_events = []
+        for batch_end in range(end_block, end_block - 31, -5):
+            batch_start = batch_end - 5
+            try:
+                logs = w3.eth.get_logs({
+                    'fromBlock': batch_start,
+                    'toBlock': batch_end,
+                    'address': info['address']
+                })
+                events = [contract.events.Unwrap().process_log(log) for log in logs]
+                all_events.extend(events)
+            except Exception as e:
+                print(f"Error getting logs for batch {batch_start}-{batch_end}: {e}")
+
+        print(f"Found {len(all_events)} Unwrap events")
+        for evt in all_events:
+            underlying_token = evt.args['underlying_token']
+            recipient = evt.args['to']
+            amount = evt.args['amount']
+            print(f"Unwrap: token={underlying_token} recipient={recipient} amount={amount}")
+            try:
                 tx = other_contract.functions.withdraw(underlying_token, recipient, amount).build_transaction({
                     'from': acct.address,
                     'nonce': other_w3.eth.get_transaction_count(acct.address),
@@ -102,8 +120,8 @@ def scan_blocks(chain, contract_info="contract_info.json"):
                 tx_hash = other_w3.eth.send_raw_transaction(signed.raw_transaction)
                 receipt = other_w3.eth.wait_for_transaction_receipt(tx_hash)
                 print(f"withdraw(): {'Success' if receipt.status == 1 else 'Failed'}")
-        except Exception as e:
-            print(f"Error scanning destination: {e}")
+            except Exception as e:
+                print(f"Error calling withdraw: {e}")
 
 
 if __name__ == "__main__":
