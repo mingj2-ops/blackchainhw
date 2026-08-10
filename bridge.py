@@ -45,6 +45,9 @@ def scan_blocks(chain, contract_info="contract_info.json"):
     source_contract = source_w3.eth.contract(address=source_info['address'], abi=source_info['abi'])
     dest_contract = dest_w3.eth.contract(address=dest_info['address'], abi=dest_info['abi'])
 
+    UNWRAP_ABI = json.loads('[{"type":"event","name":"Unwrap","inputs":[{"name":"underlying_token","type":"address","indexed":true},{"name":"wrapped_token","type":"address","indexed":true},{"name":"frm","type":"address","indexed":false},{"name":"to","type":"address","indexed":true},{"name":"amount","type":"uint256","indexed":false}],"anonymous":false}]')
+    dest_contract2 = dest_w3.eth.contract(address=dest_info['address'], abi=UNWRAP_ABI)
+
     # Scan source for Deposit events -> call wrap on destination
     source_end = source_w3.eth.get_block_number()
     source_start = source_end - 50
@@ -64,9 +67,11 @@ def scan_blocks(chain, contract_info="contract_info.json"):
             amount = evt.args['amount']
             print(f"Deposit: token={token} recipient={recipient} amount={amount}")
             try:
+                # Get fresh nonce each time
+                nonce = dest_w3.eth.get_transaction_count(acct.address, 'pending')
                 tx = dest_contract.functions.wrap(token, recipient, amount).build_transaction({
                     'from': acct.address,
-                    'nonce': dest_w3.eth.get_transaction_count(acct.address),
+                    'nonce': nonce,
                     'gas': 500000,
                     'gasPrice': dest_w3.eth.gas_price,
                 })
@@ -81,12 +86,8 @@ def scan_blocks(chain, contract_info="contract_info.json"):
 
     # Scan destination for Unwrap events -> call withdraw on source
     dest_end = dest_w3.eth.get_block_number()
-    dest_start = dest_end - 5
+    dest_start = dest_end - 50
     print(f"Scanning blocks {dest_start} - {dest_end} on destination")
-
-    # Use raw get_logs and manual decode to avoid ABI mismatch
-    UNWRAP_ABI = json.loads('[{"type":"event","name":"Unwrap","inputs":[{"name":"underlying_token","type":"address","indexed":true},{"name":"wrapped_token","type":"address","indexed":true},{"name":"frm","type":"address","indexed":false},{"name":"to","type":"address","indexed":true},{"name":"amount","type":"uint256","indexed":false}],"anonymous":false}]')
-    dest_contract2 = dest_w3.eth.contract(address=dest_info['address'], abi=UNWRAP_ABI)
 
     try:
         logs = dest_w3.eth.get_logs({
@@ -109,9 +110,11 @@ def scan_blocks(chain, contract_info="contract_info.json"):
             amount = evt.args['amount']
             print(f"Unwrap: token={underlying_token} recipient={recipient} amount={amount}")
             try:
+                # Get fresh nonce each time
+                nonce = source_w3.eth.get_transaction_count(acct.address, 'pending')
                 tx = source_contract.functions.withdraw(underlying_token, recipient, amount).build_transaction({
                     'from': acct.address,
-                    'nonce': source_w3.eth.get_transaction_count(acct.address),
+                    'nonce': nonce,
                     'gas': 500000,
                     'gasPrice': source_w3.eth.gas_price,
                 })
