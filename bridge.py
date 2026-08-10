@@ -84,13 +84,24 @@ def scan_blocks(chain, contract_info="contract_info.json"):
     dest_start = dest_end - 5
     print(f"Scanning blocks {dest_start} - {dest_end} on destination")
 
+    # Use raw get_logs and manual decode to avoid ABI mismatch
+    UNWRAP_ABI = json.loads('[{"type":"event","name":"Unwrap","inputs":[{"name":"underlying_token","type":"address","indexed":true},{"name":"wrapped_token","type":"address","indexed":true},{"name":"frm","type":"address","indexed":false},{"name":"to","type":"address","indexed":true},{"name":"amount","type":"uint256","indexed":false}],"anonymous":false}]')
+    dest_contract2 = dest_w3.eth.contract(address=dest_info['address'], abi=UNWRAP_ABI)
+
     try:
         logs = dest_w3.eth.get_logs({
             'fromBlock': dest_start,
             'toBlock': dest_end,
             'address': dest_info['address']
         })
-        unwrap_events = [dest_contract.events.Unwrap().process_log(log) for log in logs]
+        unwrap_events = []
+        for log in logs:
+            try:
+                evt = dest_contract2.events.Unwrap().process_log(log)
+                unwrap_events.append(evt)
+            except Exception:
+                continue
+
         print(f"Found {len(unwrap_events)} Unwrap events")
         for evt in unwrap_events:
             underlying_token = evt.args['underlying_token']
