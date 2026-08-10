@@ -45,10 +45,9 @@ def scan_blocks(chain, contract_info="contract_info.json"):
     source_contract = source_w3.eth.contract(address=source_info['address'], abi=source_info['abi'])
     dest_contract = dest_w3.eth.contract(address=dest_info['address'], abi=dest_info['abi'])
 
-    # Always scan BOTH chains regardless of which chain is passed
     # Scan source for Deposit events -> call wrap on destination
     source_end = source_w3.eth.get_block_number()
-    source_start = source_end - 5
+    source_start = source_end - 50
     print(f"Scanning blocks {source_start} - {source_end} on source")
 
     try:
